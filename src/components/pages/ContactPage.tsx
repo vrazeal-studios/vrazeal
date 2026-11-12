@@ -19,8 +19,6 @@ const SERVICE_OPTIONS = [
   'Not sure yet',
 ];
 
-const BUDGET_OPTIONS = ['Under £5k', '£5k – £15k', '£15k – £30k', '£30k – £60k', '£60k+', 'Not sure yet'];
-
 const EASE = [0.16, 1, 0.3, 1] as const;
 
 type Fields = { name: string; email: string; company: string; phone: string; details: string };
@@ -145,7 +143,6 @@ export function ContactPage() {
   const ready = useStageReady();
   const [fields, setFields] = useState<Fields>({ name: '', email: '', company: '', phone: '', details: '' });
   const [services, setServices] = useState<string[]>([]);
-  const [budget, setBudget] = useState<string[]>([]);
   const [sent, setSent] = useState(false);
 
   const set = (key: keyof Fields) => (value: string) => setFields((previous) => ({ ...previous, [key]: value }));
@@ -159,10 +156,9 @@ export function ContactPage() {
     const lines = [
       `Name: ${fields.name}`,
       `Email: ${fields.email}`,
+      `Phone: ${fields.phone}`,
       fields.company && `Company: ${fields.company}`,
-      fields.phone && `Phone: ${fields.phone}`,
       services.length > 0 && `Interested in: ${services.join(', ')}`,
-      budget.length > 0 && `Budget: ${budget[0]}`,
       '',
       fields.details,
     ].filter((line) => line !== false && line !== '') as string[];
@@ -310,7 +306,7 @@ export function ContactPage() {
                       <Field id="name" label="Your name" required autoComplete="name" value={fields.name} onChange={set('name')} />
                       <Field id="email" label="Email" type="email" required autoComplete="email" value={fields.email} onChange={set('email')} />
                       <Field id="company" label="Company" autoComplete="organization" value={fields.company} onChange={set('company')} />
-                      <Field id="phone" label="Phone" type="tel" autoComplete="tel" value={fields.phone} onChange={set('phone')} />
+                      <Field id="phone" label="Phone" type="tel" required autoComplete="tel" value={fields.phone} onChange={set('phone')} />
                     </div>
                     <Chips
                       legend="What do you need?"
@@ -321,12 +317,6 @@ export function ContactPage() {
                           previous.includes(option) ? previous.filter((item) => item !== option) : [...previous, option],
                         )
                       }
-                    />
-                    <Chips
-                      legend="Budget"
-                      options={BUDGET_OPTIONS}
-                      selected={budget}
-                      onToggle={(option) => setBudget((previous) => (previous[0] === option ? [] : [option]))}
                     />
                     <Field
                       id="details"

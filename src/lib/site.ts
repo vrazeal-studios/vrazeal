@@ -3,7 +3,7 @@ export const site = {
   tagline: 'Creative & Technology Agency',
   domain: 'vrazeal.com',
   url: 'https://vrazeal.com',
-  email: 'hello@vrazeal.com',
+  email: 'contact@vrazeal.in',
   description:
     'VRAZEAL is a creative and technology agency building custom software, AI-powered systems, and premium digital experiences for ambitious businesses.',
   social: [

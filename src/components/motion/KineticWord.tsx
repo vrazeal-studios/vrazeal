@@ -19,10 +19,22 @@ const word: Variants = {
   exit: { transition: { staggerChildren: 0.018 } },
 };
 
+/**
+ * Travel is a percentage of each character's own line box, but the clip box is
+ * taller than that — it carries DESCENDER_ROOM below the baseline so letters
+ * like the "p" in "platforms" are not sheared off. A character parked at 105%
+ * therefore still shows inside that extra strip, which is what made the
+ * outgoing and incoming words overlap. Anything past (1 + DESCENDER_ROOM/
+ * line-height) clears it; 155% holds for the line-heights this is used at.
+ */
+const TRAVEL = 155;
+/** Room below the baseline, in em. Kept in step with TRAVEL above. */
+const DESCENDER_ROOM = 0.18;
+
 const char: Variants = {
-  enter: { y: '105%', rotate: 8, opacity: 0 },
+  enter: { y: `${TRAVEL}%`, rotate: 8, opacity: 0 },
   center: { y: '0%', rotate: 0, opacity: 1, transition: { duration: 0.75, ease: [0.16, 1, 0.3, 1] } },
-  exit: { y: '-105%', rotate: -6, opacity: 0, transition: { duration: 0.5, ease: [0.7, 0, 0.84, 0] } },
+  exit: { y: `-${TRAVEL}%`, rotate: -6, opacity: 0, transition: { duration: 0.5, ease: [0.7, 0, 0.84, 0] } },
 };
 
 const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
@@ -77,9 +89,15 @@ export function KineticWord({ words, className, interval = 2600, active = true }
       <motion.span
         aria-hidden
         className="relative inline-block overflow-hidden whitespace-nowrap align-top"
-        style={{ height: 'calc(1lh + 0.18em)', paddingBottom: '0.18em', marginBottom: '-0.18em' }}
+        style={{
+          height: `calc(1lh + ${DESCENDER_ROOM}em)`,
+          paddingBottom: `${DESCENDER_ROOM}em`,
+          marginBottom: `-${DESCENDER_ROOM}em`,
+        }}
         animate={width ? { width } : undefined}
-        transition={{ type: 'spring', stiffness: 120, damping: 20, mass: 0.9 }}
+        // Snappier than the character roll, so the slot has already resized by
+        // the time the new word lands in it.
+        transition={{ type: 'spring', stiffness: 210, damping: 26, mass: 0.7 }}
       >
         {reduced ? (
           <span className="inline-block pr-[0.08em]">{current}</span>

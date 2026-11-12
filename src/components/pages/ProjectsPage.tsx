@@ -1,18 +1,13 @@
 'use client';
 
-import Image from 'next/image';
-import { useRef } from 'react';
-import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import { Counter } from '@/components/motion/Counter';
 import { MaskText } from '@/components/motion/MaskText';
 import { Reveal, RevealGroup, RevealItem } from '@/components/motion/Reveal';
-import { ScreensRail } from '@/components/home/ScreensRail';
+import { ProjectGallery } from '@/components/projects/ProjectGallery';
 import { Button } from '@/components/ui/Button';
 import { ClosingCta } from '@/components/ui/ClosingCta';
 import { PageHero } from '@/components/ui/PageHero';
 import { projects, type Project } from '@/lib/content';
-
-const EASE = [0.16, 1, 0.3, 1] as const;
 
 /** "5,170" → { value: 5170, suffix: '' }, "60%" → { value: 60, suffix: '%' }. */
 function parseStat(raw: string) {
@@ -94,7 +89,8 @@ function CaseStudy({ project, index }: { project: Project; index: number }) {
         </div>
       </header>
 
-      <HeroShot project={project} />
+      {/* The full walkthrough, straight after the title. */}
+      <ProjectGallery project={project} />
 
       {/* Overview */}
       <section className="shell py-section">
@@ -218,18 +214,6 @@ function CaseStudy({ project, index }: { project: Project; index: number }) {
         </section>
       )}
 
-      {/* Screens */}
-      <section className="pb-section">
-        <div className="shell">
-          <p className="eyebrow flex items-center gap-3">
-            <span className="text-paper">05</span>
-            <span className="h-px w-8 bg-paper/25" />
-            Walkthrough
-          </p>
-        </div>
-        <ScreensRail project={project} />
-      </section>
-
       {/* Stack */}
       <section className="shell pb-section">
         <div className="grid grid-cols-12 items-end gap-y-8 border-t border-hair pt-10">
@@ -248,34 +232,5 @@ function CaseStudy({ project, index }: { project: Project; index: number }) {
         </div>
       </section>
     </article>
-  );
-}
-
-/** The live site in a frame, opening from a slot as it scrolls into view. */
-function HeroShot({ project }: { project: Project }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const reduced = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'center center'] });
-  const inset = useTransform(scrollYProgress, [0, 1], [14, 0]);
-  const clipPath = useTransform(inset, (v) => `inset(${v}% ${v * 0.6}% ${v}% ${v * 0.6}% round 24px)`);
-  const scale = useTransform(scrollYProgress, [0, 1], [1.25, 1]);
-  const screen = project.screens?.[0];
-  if (!screen) return null;
-
-  return (
-    <div ref={ref} className="mt-16 px-gutter lg:mt-20">
-      <motion.div
-        className="relative mx-auto aspect-[16/9] w-full max-w-shell overflow-hidden rounded-[24px] border border-paper/10 bg-white"
-        style={reduced ? undefined : { clipPath }}
-        initial={reduced ? undefined : { opacity: 0 }}
-        whileInView={reduced ? undefined : { opacity: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 1, ease: EASE }}
-      >
-        <motion.div className="absolute inset-0" style={reduced ? undefined : { scale }}>
-          <Image src={screen.src} alt={screen.alt} fill sizes="100vw" className="object-cover object-top" />
-        </motion.div>
-      </motion.div>
-    </div>
   );
 }
