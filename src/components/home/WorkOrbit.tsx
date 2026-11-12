@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AnimatePresence,
   motion,
@@ -14,6 +14,7 @@ import {
   useTransform,
   type MotionValue,
 } from 'framer-motion';
+import { VelocityMarquee } from '@/components/motion/VelocityMarquee';
 import { Button } from '@/components/ui/Button';
 import { SectionIntro } from '@/components/ui/SectionIntro';
 import { clients, projects } from '@/lib/content';
@@ -60,7 +61,7 @@ function brands(): Brand[] {
  * behind are smaller and dimmer, those in front pass over the mark. Hovering
  * a logo stops the rotation and shows its website.
  *
- * Touch gets a different section entirely — see `BrandGrid`.
+ * Touch gets a different section entirely — see `BrandDeck`.
  */
 export function WorkOrbit() {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -83,7 +84,7 @@ export function WorkOrbit() {
           aside="Brands we have designed and built for — from live e-commerce platforms to identities and campaigns."
         />
       </div>
-      {isDesktop && !reduced ? <PinnedOrbit all={all} /> : <BrandGrid all={all} reduced={Boolean(reduced)} />}
+      {isDesktop && !reduced ? <PinnedOrbit all={all} /> : <BrandDeck all={all} reduced={Boolean(reduced)} />}
     </section>
   );
 }
@@ -382,138 +383,370 @@ function PreviewCard({ brand }: { brand: Brand }) {
 }
 
 /* ------------------------------------------------------------------ *
- * Touch — the brand wall
+ * Touch — the brand deck
  * ------------------------------------------------------------------ */
+
+/** How long each card holds the front before the deck deals the next one. */
+const DWELL = 3600;
+
+/** Resting poses for the front card and the two peeking behind it. */
+const STACK = [
+  { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1 },
+  { x: 0, y: -22, scale: 0.93, rotate: 2.5, opacity: 1 },
+  { x: 0, y: -42, scale: 0.86, rotate: -2, opacity: 0.8 },
+];
+
+type Card = { kind: 'brand'; brand: Brand } | { kind: 'open' };
+
+const pad = (value: number) => String(value).padStart(2, '0');
 
 /**
  * The orbit does not survive the trip to a phone: at that width the ring
  * collapses, the logos overlap the wordmark and every target is moving. So
- * touch gets its own section — the wordmark held still, then a wall of brand
- * plates that rise in on arrival and drift gently afterwards. Everything is a
- * stationary tap target, and each plate carries the name and sector the orbit
- * could only show on hover.
+ * touch gets a deck of brand cards instead. The deck deals itself while it is
+ * on screen, with a story-style progress bar under it; a swipe in either
+ * direction flings the front card off that side, and the bar jumps to any
+ * card. Brand names run in outline above the deck, and the last card is the
+ * open slot. Everything lives in one card height, so the section stays short.
  */
-function BrandGrid({ all, reduced }: { all: Brand[]; reduced: boolean }) {
+function BrandDeck({ all, reduced }: { all: Brand[]; reduced: boolean }) {
+  const cards = useMemo<Card[]>(
+    () => [...all.map((brand) => ({ kind: 'brand' as const, brand })), { kind: 'open' as const }],
+    [all],
+  );
+  const n = cards.length;
   const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { once: true, margin: '0px 0px -15% 0px' });
+  const inView = useInView(ref, { margin: '-15% 0px -15% 0px' });
+  const [active, setActive] = useState(0);
+  const [side, setSide] = useState<1 | -1>(-1);
+  const [held, setHeld] = useState(false);
+
+  const deal = useCallback(
+    (towards: 1 | -1) => {
+      setSide(towards);
+      setActive((current) => (current + 1) % n);
+    },
+    [n],
+  );
+
+  const playing = !reduced && inView && !held;
+
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setTimeout(() => deal(-1), DWELL);
+    return () => window.clearTimeout(timer);
+  }, [playing, active, deal]);
+
+  // A touch holds the deck so it doesn't deal out from under the reader;
+  // it picks up again after a few quiet seconds.
+  useEffect(() => {
+    if (!held) return;
+    const timer = window.setTimeout(() => setHeld(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [held, active]);
+
+  const jump = (index: number) => {
+    setHeld(true);
+    setSide(-1);
+    setActive(index);
+  };
 
   return (
-    <div ref={ref} className="shell mt-14 pb-section">
-      {/* The mark, stated once and held. */}
-      <motion.div
-        className="mx-auto w-[72%] max-w-[22rem]"
-        initial={reduced ? undefined : { opacity: 0, y: 18 }}
-        animate={reduced ? undefined : inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 18 }}
-        transition={{ duration: 1.1, ease: EASE }}
-      >
-        <Image
-          src="/logo-wordmark.png"
-          alt="VRAZEAL"
-          width={1200}
-          height={172}
-          sizes="72vw"
-          className="theme-invert h-auto w-full"
-        />
-      </motion.div>
-      <motion.p
-        className="eyebrow mt-5 text-center"
-        initial={reduced ? undefined : { opacity: 0 }}
-        animate={reduced ? undefined : inView ? { opacity: 1 } : { opacity: 0 }}
-        transition={{ duration: 0.8, delay: 0.25, ease: EASE }}
-      >
-        Trusted by
-      </motion.p>
-
-      <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {all.map((brand, index) => (
-          <BrandTile key={brand.key} brand={brand} index={index} inView={inView} reduced={reduced} />
-        ))}
-
-        {/* The open slot, same as the orbit's. */}
-        <motion.div
-          initial={reduced ? undefined : { opacity: 0, y: 24 }}
-          animate={reduced ? undefined : inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 }}
-          transition={{ duration: 0.8, delay: 0.3 + all.length * 0.07, ease: EASE }}
-        >
-          <Link
-            href="/contact"
-            className="group flex h-full min-h-[11rem] flex-col items-center justify-center rounded-[18px] border border-dashed border-paper/25 p-4 text-center transition-colors duration-500 active:border-accent"
-          >
-            <span className="accent-serif text-[1.25rem] leading-none text-paper/80">Your logo</span>
-            <span className="mt-2 font-mono text-[0.5625rem] uppercase tracking-[0.14em] text-accent-bright">
-              here →
-            </span>
-          </Link>
-        </motion.div>
+    <div ref={ref} className="relative mt-12 pb-section">
+      <div className="shell flex items-end justify-between gap-4">
+        <p className="eyebrow flex items-center gap-3">
+          <span className="text-paper">Trusted by</span>
+          <span className="h-px w-8 bg-paper/25" />
+          {all.length} brands
+        </p>
+        <p className="flex items-baseline font-mono text-label text-ash">
+          <span className="relative inline-flex h-[1.25em] overflow-hidden text-paper">
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.span
+                key={active}
+                initial={{ y: '100%' }}
+                animate={{ y: '0%' }}
+                exit={{ y: '-100%' }}
+                transition={{ duration: 0.5, ease: EASE }}
+              >
+                {pad(active + 1)}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+          <span className="mx-1.5">/</span>
+          {pad(n)}
+        </p>
       </div>
 
-      <div className="mt-10 flex justify-center">
-        <Button as={Link} href="/projects" variant="ghost" size="md">
-          All case studies
-        </Button>
+      {/* Every name on the deck, running in outline. */}
+      <VelocityMarquee baseVelocity={-1.4} skew={false} className="mt-6">
+        {all.map((brand) => (
+          <span
+            key={brand.key}
+            aria-hidden
+            className="flex items-center whitespace-nowrap font-display text-[3.25rem] font-medium leading-[1.1] tracking-[-0.05em]"
+          >
+            <span className="text-outline">{brand.name}</span>
+            <span className="px-5 text-[1.5rem] text-accent">✦</span>
+          </span>
+        ))}
+      </VelocityMarquee>
+
+      <div className="shell mt-6">
+        <div
+          className="relative mx-auto h-[25.5rem] max-w-[24rem]"
+          aria-roledescription="carousel"
+          aria-label="Brands we have worked with"
+        >
+          {cards.map((card, index) => (
+            <DeckCard
+              key={card.kind === 'brand' ? card.brand.key : 'open'}
+              card={card}
+              index={index}
+              place={(index - active + n) % n}
+              n={n}
+              side={side}
+              onTouch={() => setHeld(true)}
+              onDeal={(towards) => {
+                setHeld(true);
+                deal(towards);
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Story-style progress — one segment per card, and a way to jump. */}
+        <div className="mx-auto mt-7 flex max-w-[24rem] gap-1.5">
+          {cards.map((card, index) => {
+            const label = card.kind === 'brand' ? card.brand.name : 'Your logo here';
+            const isActive = index === active;
+            return (
+              <button
+                key={label}
+                type="button"
+                aria-label={`Show ${label}`}
+                aria-current={isActive}
+                onClick={() => jump(index)}
+                className="relative h-6 flex-1"
+              >
+                <span className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 overflow-hidden rounded-full bg-paper/15">
+                  {index < active && <span className="absolute inset-0 bg-paper/50" />}
+                  {isActive && (
+                    <motion.span
+                      key={`${active}-${playing}`}
+                      className="absolute inset-0 origin-left bg-accent shadow-[0_0_8px_#0A84FF]"
+                      initial={{ scaleX: playing ? 0 : 1 }}
+                      animate={{ scaleX: 1 }}
+                      transition={playing ? { duration: DWELL / 1000, ease: 'linear' } : { duration: 0 }}
+                    />
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mx-auto mt-8 flex max-w-[24rem] items-center justify-between gap-4">
+          <p className="flex items-center gap-2.5 font-mono text-[0.625rem] uppercase tracking-[0.14em] text-ash">
+            <motion.span
+              aria-hidden
+              className="text-[0.875rem] text-accent-bright"
+              animate={reduced ? undefined : { x: [0, -5, 5, 0] }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut', repeatDelay: 1.2 }}
+            >
+              ⟷
+            </motion.span>
+            Swipe the deck
+          </p>
+          <Button as={Link} href="/projects" variant="ghost" size="md">
+            All case studies
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-function BrandTile({
-  brand,
+function DeckCard({
+  card,
   index,
-  inView,
-  reduced,
+  place,
+  n,
+  side,
+  onTouch,
+  onDeal,
 }: {
-  brand: Brand;
+  card: Card;
   index: number;
-  inView: boolean;
-  reduced: boolean;
+  place: number;
+  n: number;
+  side: 1 | -1;
+  onTouch: () => void;
+  onDeal: (towards: 1 | -1) => void;
 }) {
-  const body = (
-    // The gentle drift that replaces the orbit's rotation on touch.
+  const dragX = useMotionValue(0);
+  const tilt = useTransform(dragX, [-220, 0, 220], [-14, 0, 14]);
+  const dragged = useRef(false);
+
+  const front = place === 0;
+  const stacked = place < STACK.length;
+  const dealt = !stacked && place === n - 1; // the card that just left the front
+
+  const pose = stacked
+    ? STACK[place]
+    : dealt
+      ? { x: side * 440, y: 24, scale: 0.96, rotate: side * 20, opacity: 0 }
+      : { x: 0, y: -56, scale: 0.8, rotate: 0, opacity: 0 };
+
+  return (
     <motion.div
-      className="flex h-full min-h-[11rem] flex-col justify-between rounded-[18px] border border-hair bg-carbon p-4"
-      animate={reduced ? undefined : { y: [0, -6, 0] }}
-      transition={{ duration: 5 + (index % 3), repeat: Infinity, ease: 'easeInOut', delay: index * 0.4 }}
+      className="absolute inset-x-0 bottom-0 h-[22.5rem]"
+      style={{ transformOrigin: '50% 0%', zIndex: dealt ? n + 1 : n - place, pointerEvents: front ? 'auto' : 'none' }}
+      initial={false}
+      animate={pose}
+      transition={
+        dealt ? { duration: 0.6, ease: [0.32, 0, 0.67, 0] } : { type: 'spring', stiffness: 240, damping: 28, mass: 0.9 }
+      }
+      aria-hidden={!front}
     >
-      <span className="flex flex-1 items-center justify-center">
-        <span className="flex h-[4.5rem] w-full items-center justify-center rounded-xl bg-white p-3 [[data-theme=light]_&]:bg-transparent">
+      <motion.div
+        className="relative h-full w-full"
+        style={{ x: dragX, rotate: tilt, touchAction: 'pan-y' }}
+        drag={front ? 'x' : false}
+        dragSnapToOrigin
+        dragElastic={1}
+        onPointerDownCapture={() => {
+          dragged.current = false;
+        }}
+        onDragStart={() => {
+          dragged.current = true;
+          onTouch();
+        }}
+        onDragEnd={(_, info) => {
+          if (Math.abs(info.offset.x) > 80 || Math.abs(info.velocity.x) > 500) {
+            onDeal(info.offset.x > 0 ? 1 : -1);
+          }
+        }}
+        // A swipe that ends over a link must not also follow it.
+        onClickCapture={(event) => {
+          if (dragged.current) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
+      >
+        <DeckFace card={card} index={index} front={front} />
+        {/* Cards waiting their turn sit in shadow, so only their edges read. */}
+        <motion.span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[28px] bg-void"
+          initial={false}
+          animate={{ opacity: front ? 0 : 0.7 }}
+          transition={{ duration: 0.5, ease: EASE }}
+        />
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function DeckFace({ card, index, front }: { card: Card; index: number; front: boolean }) {
+  const glow = (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute -top-28 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full"
+      style={{ background: 'radial-gradient(closest-side, rgba(10,132,255,0.26), transparent)' }}
+    />
+  );
+
+  if (card.kind === 'open') {
+    return (
+      <Link
+        href="/contact"
+        tabIndex={front ? 0 : -1}
+        draggable={false}
+        className="relative flex h-full flex-col justify-between overflow-hidden rounded-[28px] border border-dashed border-accent/50 bg-carbon p-6 shadow-[0_40px_90px_-40px_var(--shadow-c)]"
+      >
+        {glow}
+        <span className="relative flex items-center justify-between">
+          <span className="eyebrow">Open slot</span>
+          <span className="font-mono text-label text-ash">{pad(index + 1)}</span>
+        </span>
+        <span className="relative block">
+          <span className="accent-serif block text-[3.25rem] leading-[0.95] text-paper">
+            Your logo
+            <br />
+            here<span className="text-accent">.</span>
+          </span>
+          <span className="mt-4 block max-w-[26ch] text-[0.9375rem] leading-[1.5] text-smoke">
+            The next brand on this deck could be yours.
+          </span>
+        </span>
+        <span className="relative inline-flex items-center gap-2 self-start rounded-pill bg-accent px-5 py-3 text-[0.875rem] font-medium text-white shadow-[0_0_30px_rgba(10,132,255,0.45)]">
+          Start a project <span aria-hidden>→</span>
+        </span>
+      </Link>
+    );
+  }
+
+  const { brand } = card;
+  const body = (
+    <span className="relative flex h-full flex-col overflow-hidden rounded-[28px] border border-paper/10 bg-carbon p-6 shadow-[0_40px_90px_-40px_var(--shadow-c)]">
+      {glow}
+      <span className="relative flex items-center justify-between gap-4">
+        <span className="eyebrow truncate">{brand.sector}</span>
+        <span className="font-mono text-label text-ash">{pad(index + 1)}</span>
+      </span>
+
+      <span className="relative flex flex-1 items-center justify-center py-6">
+        <span className="flex h-36 w-full items-center justify-center rounded-[20px] bg-white p-6 shadow-[0_0_60px_-14px_rgba(10,132,255,0.55)] [[data-theme=light]_&]:bg-transparent [[data-theme=light]_&]:shadow-none">
           {brand.logo ? (
             <Image
               src={brand.logo.src}
               alt={`${brand.name} logo`}
               width={brand.logo.width}
               height={brand.logo.height}
-              sizes="140px"
-              className="h-full w-auto max-w-full object-contain"
+              sizes="260px"
+              draggable={false}
+              className="h-full w-auto max-w-full select-none object-contain"
             />
           ) : (
-            <span className="text-center font-display text-[0.875rem] font-medium text-black">{brand.name}</span>
+            <span className="text-center font-display text-[1.125rem] font-medium text-black">{brand.name}</span>
           )}
         </span>
       </span>
-      <span className="mt-4 block">
-        <span className="line-clamp-2 block font-display text-[0.9375rem] font-medium leading-tight tracking-[-0.02em] text-paper">
-          {brand.name}
+
+      <span className="relative flex items-end justify-between gap-4 border-t border-hair pt-5">
+        <span className="min-w-0">
+          <span className="line-clamp-2 block font-display text-[1.625rem] font-medium leading-[1.02] tracking-[-0.04em] text-paper">
+            {brand.name}
+          </span>
+          <span className="mt-2 block font-mono text-[0.625rem] uppercase tracking-[0.14em] text-ash">
+            {brand.href ? 'Read the case study' : 'Brand partner'}
+          </span>
         </span>
-        <span className="mt-1 block truncate font-mono text-[0.5625rem] uppercase tracking-[0.12em] text-ash">
-          {brand.sector}
-        </span>
+        {brand.href && (
+          <span
+            aria-hidden
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-accent/50 text-accent-bright"
+          >
+            ↗
+          </span>
+        )}
       </span>
-    </motion.div>
+    </span>
   );
 
-  return (
-    <motion.div
-      initial={reduced ? undefined : { opacity: 0, y: 24 }}
-      animate={reduced ? undefined : inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 }}
-      transition={{ duration: 0.8, delay: 0.3 + index * 0.07, ease: EASE }}
+  return brand.href ? (
+    <Link
+      href={brand.href}
+      tabIndex={front ? 0 : -1}
+      draggable={false}
+      aria-label={`${brand.name} case study`}
+      className="block h-full"
     >
-      {brand.href ? (
-        <Link href={brand.href} aria-label={`${brand.name} case study`} className="block h-full">
-          {body}
-        </Link>
-      ) : (
-        body
-      )}
-    </motion.div>
+      {body}
+    </Link>
+  ) : (
+    body
   );
 }
