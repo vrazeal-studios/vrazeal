@@ -14,7 +14,7 @@ export function TechStack() {
     <section id="stack" className="relative overflow-hidden bg-void py-section">
       <div className="shell">
         <SectionIntro
-          index="07"
+          index="06"
           label="Stack"
           title={[
             'Tools chosen',

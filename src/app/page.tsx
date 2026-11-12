@@ -6,7 +6,6 @@ import { HomeHero } from '@/components/home/HomeHero';
 import { Manifesto } from '@/components/home/Manifesto';
 import { ProcessSteps } from '@/components/home/ProcessSteps';
 import { TechStack } from '@/components/home/TechStack';
-import { WhyBento } from '@/components/home/WhyBento';
 import { ValuePillars } from '@/components/services/ValuePillars';
 import { ClosingCta } from '@/components/ui/ClosingCta';
 import { ScrollProgress } from '@/components/ui/ScrollProgress';
@@ -35,7 +34,6 @@ export default function HomePage() {
       <WorkOrbit />
       <ValuePillars index="04" />
       <ProcessSteps />
-      <WhyBento />
       <TechStack />
       <FaqSection />
       <ClosingCta />

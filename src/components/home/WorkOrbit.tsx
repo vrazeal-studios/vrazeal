@@ -2,13 +2,14 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AnimatePresence,
   motion,
   useAnimationFrame,
   useInView,
   useMotionValue,
+  useMotionValueEvent,
   useReducedMotion,
   useScroll,
   useTransform,
@@ -386,8 +387,14 @@ function PreviewCard({ brand }: { brand: Brand }) {
  * Touch — the brand deck
  * ------------------------------------------------------------------ */
 
-/** How long each card holds the front before the deck deals the next one. */
-const DWELL = 3600;
+/**
+ * The stretch of the deck's pass through the viewport (0 = its top meets the
+ * bottom of the screen, 1 = its bottom leaves the top) over which the cards
+ * are dealt: the first card goes once the deck is fully on screen, the last
+ * just before it reaches the top. About 95px of scroll per card on a phone.
+ */
+const DEAL_FROM = 0.3;
+const DEAL_TO = 0.68;
 
 /** Resting poses for the front card and the two peeking behind it. */
 const STACK = [
@@ -403,11 +410,12 @@ const pad = (value: number) => String(value).padStart(2, '0');
 /**
  * The orbit does not survive the trip to a phone: at that width the ring
  * collapses, the logos overlap the wordmark and every target is moving. So
- * touch gets a deck of brand cards instead. The deck deals itself while it is
- * on screen, with a story-style progress bar under it; a swipe in either
- * direction flings the front card off that side, and the bar jumps to any
- * card. Brand names run in outline above the deck, and the last card is the
- * open slot. Everything lives in one card height, so the section stays short.
+ * touch gets a deck of brand cards instead. Scrolling deals it: as the deck
+ * travels up the screen each card in turn is flung off and the next rises to
+ * the front, and scrolling back up brings them back. A swipe in either
+ * direction deals by hand, and the progress bar jumps to any card. Brand
+ * names run in outline above the deck, and the last card is the open slot.
+ * Nothing is pinned, so the section stays one card tall.
  */
 function BrandDeck({ all, reduced }: { all: Brand[]; reduced: boolean }) {
   const cards = useMemo<Card[]>(
@@ -415,44 +423,36 @@ function BrandDeck({ all, reduced }: { all: Brand[]; reduced: boolean }) {
     [all],
   );
   const n = cards.length;
-  const ref = useRef<HTMLDivElement>(null);
-  const inView = useInView(ref, { margin: '-15% 0px -15% 0px' });
+  const deckRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   const [side, setSide] = useState<1 | -1>(-1);
-  const [held, setHeld] = useState(false);
 
-  const deal = useCallback(
-    (towards: 1 | -1) => {
-      setSide(towards);
-      setActive((current) => (current + 1) % n);
-    },
-    [n],
-  );
+  const { scrollYProgress } = useScroll({ target: deckRef, offset: ['start end', 'end start'] });
+  const dealtByScroll = useRef(0);
 
-  const playing = !reduced && inView && !held;
+  // Only a change in the scroll-chosen card moves the deck, so a card dealt
+  // by hand stays put until the reader scrolls on to the next step.
+  useMotionValueEvent(scrollYProgress, 'change', (progress) => {
+    const t = Math.min(1, Math.max(0, (progress - DEAL_FROM) / (DEAL_TO - DEAL_FROM)));
+    const index = Math.round(t * (n - 1));
+    if (index === dealtByScroll.current) return;
+    dealtByScroll.current = index;
+    setSide(-1);
+    setActive(index);
+  });
 
-  useEffect(() => {
-    if (!playing) return;
-    const timer = window.setTimeout(() => deal(-1), DWELL);
-    return () => window.clearTimeout(timer);
-  }, [playing, active, deal]);
-
-  // A touch holds the deck so it doesn't deal out from under the reader;
-  // it picks up again after a few quiet seconds.
-  useEffect(() => {
-    if (!held) return;
-    const timer = window.setTimeout(() => setHeld(false), 6000);
-    return () => window.clearTimeout(timer);
-  }, [held, active]);
+  const deal = (towards: 1 | -1) => {
+    setSide(towards);
+    setActive((current) => (current + 1) % n);
+  };
 
   const jump = (index: number) => {
-    setHeld(true);
     setSide(-1);
     setActive(index);
   };
 
   return (
-    <div ref={ref} className="relative mt-12 pb-section">
+    <div className="relative mt-12 pb-section">
       <div className="shell flex items-end justify-between gap-4">
         <p className="eyebrow flex items-center gap-3">
           <span className="text-paper">Trusted by</span>
@@ -494,6 +494,7 @@ function BrandDeck({ all, reduced }: { all: Brand[]; reduced: boolean }) {
 
       <div className="shell mt-6">
         <div
+          ref={deckRef}
           className="relative mx-auto h-[25.5rem] max-w-[24rem]"
           aria-roledescription="carousel"
           aria-label="Brands we have worked with"
@@ -506,11 +507,7 @@ function BrandDeck({ all, reduced }: { all: Brand[]; reduced: boolean }) {
               place={(index - active + n) % n}
               n={n}
               side={side}
-              onTouch={() => setHeld(true)}
-              onDeal={(towards) => {
-                setHeld(true);
-                deal(towards);
-              }}
+              onDeal={deal}
             />
           ))}
         </div>
@@ -533,11 +530,11 @@ function BrandDeck({ all, reduced }: { all: Brand[]; reduced: boolean }) {
                   {index < active && <span className="absolute inset-0 bg-paper/50" />}
                   {isActive && (
                     <motion.span
-                      key={`${active}-${playing}`}
+                      key={active}
                       className="absolute inset-0 origin-left bg-accent shadow-[0_0_8px_#0A84FF]"
-                      initial={{ scaleX: playing ? 0 : 1 }}
+                      initial={{ scaleX: reduced ? 1 : 0 }}
                       animate={{ scaleX: 1 }}
-                      transition={playing ? { duration: DWELL / 1000, ease: 'linear' } : { duration: 0 }}
+                      transition={{ duration: 0.6, ease: EASE }}
                     />
                   )}
                 </span>
@@ -573,7 +570,6 @@ function DeckCard({
   place,
   n,
   side,
-  onTouch,
   onDeal,
 }: {
   card: Card;
@@ -581,7 +577,6 @@ function DeckCard({
   place: number;
   n: number;
   side: 1 | -1;
-  onTouch: () => void;
   onDeal: (towards: 1 | -1) => void;
 }) {
   const dragX = useMotionValue(0);
@@ -620,7 +615,6 @@ function DeckCard({
         }}
         onDragStart={() => {
           dragged.current = true;
-          onTouch();
         }}
         onDragEnd={(_, info) => {
           if (Math.abs(info.offset.x) > 80 || Math.abs(info.velocity.x) > 500) {

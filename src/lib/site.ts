@@ -25,7 +25,6 @@ export const nav = [
 /** Used only on the home page for in-page anchor scrolling */
 export const homeNav = [
   { label: 'What we build', href: '#build' },
-  { label: 'Approach', href: '#approach' },
   { label: 'Process', href: '#process' },
   { label: 'Work', href: '#work' },
   { label: 'Contact', href: '#contact' },
